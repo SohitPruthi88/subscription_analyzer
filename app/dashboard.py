@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 
+from assistant import answer_user_question
+from ai_insights import generate_insights
 from data_loader import load_transactions
 from analyzer import (
     analyze_customer,
@@ -87,13 +89,14 @@ def main():
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
             "Price Changes",
             "Overlapping Plans",
             "Recommendations",
+            "Ask AI",
         ]
     )
 
@@ -125,10 +128,39 @@ def main():
             "No overlapping plan types detected.",
         )
 
+    #with tab5:
+    #    st.markdown("### Recommendation Preview")
+    #    st.write(generate_insights(customer_result, selected_customer))
+
     with tab5:
         st.markdown("### Recommendation Preview")
-        st.write(generate_recommendation(customer_result, selected_customer))
+        insights = generate_insights(customer_result, selected_customer)
+        st.success(insights)
 
+    with tab6:
+        st.markdown("### Ask AI About This Customer")
+
+        example_questions = [
+            "How much am I spending per month?",
+            "Do I have duplicate subscriptions?",
+            "What subscriptions do I have?",
+            "What changed this month?",
+            "Which one should I cancel first?",
+        ]
+
+        selected_example = st.selectbox("Try an example question", [""] + example_questions)
+
+        user_question = st.text_input(
+            "Or type your own question",
+            value=selected_example
+        )
+
+        if st.button("Get Answer"):
+            if user_question.strip():
+                answer = answer_user_question(user_question, customer_result, selected_customer)
+                st.info(answer)
+            else:
+                st.warning("Please enter a question.")
 
 def generate_recommendation(customer_result: dict, customer_id: int) -> str:
     messages = [f"Customer {customer_id} summary:"]
