@@ -1,0 +1,40 @@
+txn_id,customer_id,date,merchant,amount,type,category,description
+1,1001,2026-01-03,NETFLIX.COM,-15.99,debit,entertainment,Monthly subscription
+2,1001,2026-01-05,SPOTIFY USA,-10.99,debit,music,Premium plan
+3,1001,2026-01-08,ADOBE *CREATIVE,-24.99,debit,software,Creative Cloud monthly plan
+4,1001,2026-01-15,AMAZON PRIME ANNUAL,-139.00,debit,shopping,Annual Prime membership
+5,1001,2026-02-03,NETFLIX.COM,-15.99,debit,entertainment,Monthly subscription
+6,1001,2026-02-05,SPOTIFY USA,-10.99,debit,music,Premium plan
+7,1001,2026-02-08,ADOBE *CREATIVE,-24.99,debit,software,Creative Cloud monthly plan
+8,1001,2026-03-03,NETFLIX.COM,-15.99,debit,entertainment,Monthly subscription
+9,1001,2026-03-05,SPOTIFY USA,-10.99,debit,music,Premium plan
+10,1001,2026-03-08,ADOBE *CREATIVE,-24.99,debit,software,Creative Cloud monthly plan
+11,1001,2026-03-11,NETFLIX.COM,-15.99,debit,entertainment,Duplicate charge same month
+12,1002,2026-01-02,APPLE.COM/BILL,-9.99,debit,entertainment,Apple TV monthly plan
+13,1002,2026-01-06,YOUTUBE PREMIUM,-11.99,debit,entertainment,YouTube Premium monthly
+14,1002,2026-01-10,SPOTIFY FAMILY,-16.99,debit,music,Family music plan
+15,1002,2026-02-02,APPLE.COM/BILL,-9.99,debit,entertainment,Apple TV monthly plan
+16,1002,2026-02-06,YOUTUBE PREMIUM,-11.99,debit,entertainment,YouTube Premium monthly
+17,1002,2026-02-10,SPOTIFY FAMILY,-16.99,debit,music,Family music plan
+18,1002,2026-03-02,APPLE.COM/BILL,-9.99,debit,entertainment,Apple TV monthly plan
+19,1002,2026-03-06,YOUTUBE PREMIUM,-13.99,debit,entertainment,Price increased
+20,1002,2026-03-10,SPOTIFY FAMILY,-16.99,debit,music,Family music plan
+21,1002,2026-03-12,SPOTIFY INDIVIDUAL,-10.99,debit,music,Possible duplicate music subscription
+22,1003,2026-01-04,GYM PRO,-39.00,debit,fitness,Membership fee
+23,1003,2026-01-09,DUOLINGO,-6.99,debit,education,Language premium plan
+24,1003,2026-01-14,CANVA,-12.99,debit,software,Canva Pro monthly
+25,1003,2026-02-04,GYM PRO,-39.00,debit,fitness,Membership fee
+26,1003,2026-02-09,DUOLINGO,-6.99,debit,education,Language premium plan
+27,1003,2026-02-14,CANVA,-12.99,debit,software,Canva Pro monthly
+28,1003,2026-03-09,DUOLINGO,-6.99,debit,education,Language premium plan
+29,1003,2026-03-14,CANVA,-12.99,debit,software,Canva Pro monthly
+30,1004,2026-01-01,HULU,-7.99,debit,entertainment,Hulu basic monthly
+31,1004,2026-01-07,DISNEYPLUS,-13.99,debit,entertainment,Disney Plus monthly
+32,1004,2026-01-12,MICROSOFT 365,-9.99,debit,software,Microsoft 365 personal
+33,1004,2026-02-01,HULU,-7.99,debit,entertainment,Hulu basic monthly
+34,1004,2026-02-07,DISNEYPLUS,-13.99,debit,entertainment,Disney Plus monthly
+35,1004,2026-02-12,MICROSOFT 365,-9.99,debit,software,Microsoft 365 personal
+36,1004,2026-03-01,HULU,-7.99,debit,entertainment,Hulu basic monthly
+37,1004,2026-03-07,DISNEYPLUS,-13.99,debit,entertainment,Disney Plus monthly
+38,1004,2026-03-12,MICROSOFT 365,-9.99,debit,software,Microsoft 365 personal
+39,1004,2026-03-13,MICROSOFT 365,-9.99,debit,software,Duplicate charge same cycle
