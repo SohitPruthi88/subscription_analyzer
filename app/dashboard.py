@@ -42,6 +42,7 @@ from memory import (
     get_chat_history,
     initialize_memory_store,
 )
+from planner_agent import run_planner_agent
 from tool_agent import run_tool_agent
 
 
@@ -148,7 +149,7 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
@@ -160,6 +161,7 @@ def main() -> None:
             "Agent Decision",
             "Memory & Trace",
             "Tool Agent",
+            "Planner Agent",
         ]
     )
 
@@ -639,6 +641,81 @@ def main() -> None:
                         st.success("Tool-created action added to Action Center.")
             else:
                 st.warning("Please enter a question for the tool agent.")
+
+    with tab11:
+        st.markdown("### Planner Agent")
+        st.caption(
+            "The planner inspects the customer state, creates a workflow plan, runs the first inspection step, and optionally prepares an action."
+        )
+
+        if st.button("Run Planner Agent"):
+            planner_result = run_planner_agent(
+                customer_result,
+                selected_customer,
+                use_llm=use_llm,
+            )
+
+            plan = planner_result["plan"]
+            inspection_result = planner_result["inspection_result"]
+            action_result = planner_result["action_result"]
+
+            add_agent_trace(
+                selected_customer,
+                "planner_run",
+                f"Planner agent ran for issue type {plan['issue_type']}.",
+                {
+                    "priority": plan["priority"],
+                    "recommended_tool": plan["recommended_tool"],
+                    "recommended_action_tool": plan["recommended_action_tool"],
+                },
+            )
+
+            st.markdown("#### Plan Summary")
+            st.markdown(f"**Title:** {plan['title']}")
+            st.markdown(f"**Priority:** {plan['priority'].upper()}")
+            st.markdown(f"**Issue Type:** {plan['issue_type']}")
+
+            st.markdown("#### Planned Steps")
+            for idx, step in enumerate(plan["steps"], start=1):
+                st.write(f"{idx}. {step}")
+
+            st.markdown("#### Final Recommendation")
+            st.success(plan["final_recommendation"])
+
+            st.markdown("#### Follow-Up Question")
+            if plan["follow_up_question"]:
+                st.warning(plan["follow_up_question"])
+            else:
+                st.info("No follow-up question needed.")
+
+            st.markdown("#### Inspection Result")
+            st.code(inspection_result["tool_choice"]["tool_name"])
+            st.info(inspection_result["final_answer"])
+
+            st.markdown("#### Inspection Raw Output")
+            st.json(inspection_result["tool_result"])
+
+            if action_result is not None:
+                st.markdown("#### Planned Action Result")
+                st.code(action_result["tool_choice"]["tool_name"])
+                st.info(action_result["final_answer"])
+                st.json(action_result["tool_result"])
+
+                if (
+                    action_result["tool_result"]["result_type"] == "action"
+                    and action_result["tool_result"].get("created_action") is not None
+                ):
+                    if st.button("Add Planner Action to Action Center"):
+                        add_action(action_result["tool_result"]["created_action"])
+                        add_agent_trace(
+                            selected_customer,
+                            "planner_action_added",
+                            f"Planner action added for {action_result['tool_result']['created_action']['merchant']}.",
+                            {"action_type": action_result['tool_result']['created_action']['action_type']},
+                        )
+                        st.success("Planner-created action added to Action Center.")
+        else:
+            st.info("Click 'Run Planner Agent' to generate a workflow plan.")
 
 
 if __name__ == "__main__":
