@@ -43,15 +43,14 @@ from memory import (
     initialize_memory_store,
 )
 from planner_agent import run_planner_agent
-from tool_agent import run_tool_agent
-
 from savings_engine import (
     calculate_savings_opportunity,
-    generate_top_issues,
     generate_recommended_actions,
+    generate_top_issues,
 )
-
+from tool_agent import run_tool_agent
 from upload_utils import normalize_columns, validate_mapping
+
 
 st.set_page_config(
     page_title="Subscription Analyzer",
@@ -78,6 +77,12 @@ def get_monthly_spend_value(customer_result: dict) -> float:
     return float(monthly_spend_df["total_estimated_monthly_spend"].iloc[0])
 
 
+def load_active_dataframe() -> pd.DataFrame:
+    if "uploaded_df" in st.session_state:
+        return st.session_state["uploaded_df"]
+    return load_transactions("data/transactions.csv")
+
+
 def main() -> None:
     st.title("💳 Subscription Analyzer")
     st.caption(
@@ -85,16 +90,21 @@ def main() -> None:
         "and mock follow-up actions from banking-style transaction data."
     )
 
-    #df = load_transactions("data/transactions.csv")
-    if "uploaded_df" in st.session_state:
-        df = st.session_state["uploaded_df"]
-    else:
-        df = load_transactions("data/transactions.csv")
-
     initialize_action_store()
     initialize_memory_store()
 
+    df = load_active_dataframe()
+
     st.sidebar.header("Controls")
+
+    if "uploaded_df" in st.session_state:
+        st.sidebar.success("Using uploaded dataset for analysis")
+        st.sidebar.info("Go to '💰 Savings Opportunity' to view updated insights.")
+        if st.sidebar.button("Reset to default demo dataset"):
+            st.session_state.pop("uploaded_df", None)
+            st.session_state.pop("data_uploaded", None)
+            st.rerun()
+
     customer_ids = sorted(df["customer_id"].unique().tolist())
     selected_customer = st.sidebar.selectbox("Select customer", customer_ids)
 
@@ -123,6 +133,9 @@ def main() -> None:
     customer_result = analyze_customer(df, selected_customer)
     all_monthly_spend = estimate_monthly_subscription_spend(df)
     agent_decision = decide_next_step(customer_result, selected_customer)
+
+    if "data_uploaded" in st.session_state:
+        st.warning("Viewing insights for uploaded dataset")
 
     st.subheader("Overview")
 
@@ -161,7 +174,21 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab_upload, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(
+    (
+        tab_upload,
+        tab0,
+        tab1,
+        tab2,
+        tab3,
+        tab4,
+        tab5,
+        tab6,
+        tab7,
+        tab8,
+        tab9,
+        tab10,
+        tab11,
+    ) = st.tabs(
         [
             "📂 Upload Data",
             "💰 Savings Opportunity",
@@ -181,6 +208,9 @@ def main() -> None:
 
     with tab_upload:
         st.markdown("## 📂 Upload Bank Statement")
+        st.caption(
+            "Upload a CSV, map the key columns, and the rest of the app will automatically switch to the uploaded dataset."
+        )
 
         uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
@@ -188,15 +218,14 @@ def main() -> None:
             raw_df = pd.read_csv(uploaded_file)
 
             st.markdown("### Preview Data")
-            st.dataframe(raw_df.head())
+            st.dataframe(raw_df.head(), use_container_width=True)
 
             st.markdown("### Map Columns")
-
             columns = raw_df.columns.tolist()
 
-            date_col = st.selectbox("Date column", columns)
-            merchant_col = st.selectbox("Merchant column", columns)
-            amount_col = st.selectbox("Amount column", columns)
+            date_col = st.selectbox("Date column", columns, key="upload_date_col")
+            merchant_col = st.selectbox("Merchant column", columns, key="upload_merchant_col")
+            amount_col = st.selectbox("Amount column", columns, key="upload_amount_col")
 
             mapping = {
                 date_col: "date",
@@ -204,19 +233,23 @@ def main() -> None:
                 amount_col: "amount",
             }
 
-            if st.button("Process Data"):
+            if st.button("Process Data", key="process_uploaded_data"):
                 if validate_mapping(mapping):
                     processed_df = normalize_columns(raw_df, mapping)
-
                     st.session_state["uploaded_df"] = processed_df
-                    st.success("Data processed successfully!")
-
+                    st.session_state["data_uploaded"] = True
+                    st.success("Data loaded successfully. Navigate to '💰 Savings Opportunity' to view insights.")
+                    st.info("The entire app will now use the uploaded dataset.")
+                    st.rerun()
                 else:
                     st.error("Please map all required fields.")
 
         if "uploaded_df" in st.session_state:
+            st.success("Using uploaded dataset for analysis")
+            st.info("Go to '💰 Savings Opportunity' tab to see insights")
+
             st.markdown("### Processed Data Preview")
-            st.dataframe(st.session_state["uploaded_df"].head())
+            st.dataframe(st.session_state["uploaded_df"].head(), use_container_width=True)
 
     with tab0:
         st.markdown("## 💰 Subscription Savings Opportunity")
@@ -225,14 +258,12 @@ def main() -> None:
         issues = generate_top_issues(customer_result)
         actions = generate_recommended_actions(customer_result)
 
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("Monthly Spend", f"${savings['monthly_spend']:.2f}")
-        col2.metric("Potential Monthly Waste", f"${savings['estimated_waste']:.2f}")
-        col3.metric("Annual Savings Opportunity", f"${savings['annual_savings']:.2f}")
+        savings_col1, savings_col2, savings_col3 = st.columns(3)
+        savings_col1.metric("Monthly Spend", f"${savings['monthly_spend']:.2f}")
+        savings_col2.metric("Potential Monthly Waste", f"${savings['estimated_waste']:.2f}")
+        savings_col3.metric("Annual Savings Opportunity", f"${savings['annual_savings']:.2f}")
 
         st.markdown("---")
-
         st.markdown("### ⚠️ Key Issues Identified")
         for issue in issues:
             st.warning(issue)
@@ -242,7 +273,6 @@ def main() -> None:
             st.success(action)
 
         st.markdown("---")
-
         st.markdown("### 💡 What This Means")
         st.info(
             "This customer has opportunities to reduce recurring spend by reviewing duplicate, "
@@ -720,7 +750,7 @@ def main() -> None:
                             selected_customer,
                             "tool_agent_action_added",
                             f"Added tool-created action for {result['tool_result']['created_action']['merchant']}.",
-                            {"action_type": result['tool_result']['created_action']['action_type']},
+                            {"action_type": result["tool_result"]["created_action"]["action_type"]},
                         )
                         st.success("Tool-created action added to Action Center.")
             else:
@@ -795,7 +825,7 @@ def main() -> None:
                             selected_customer,
                             "planner_action_added",
                             f"Planner action added for {action_result['tool_result']['created_action']['merchant']}.",
-                            {"action_type": action_result['tool_result']['created_action']['action_type']},
+                            {"action_type": action_result["tool_result"]["created_action"]["action_type"]},
                         )
                         st.success("Planner-created action added to Action Center.")
         else:
