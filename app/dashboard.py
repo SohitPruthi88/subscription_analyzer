@@ -45,6 +45,13 @@ from memory import (
 from planner_agent import run_planner_agent
 from tool_agent import run_tool_agent
 
+from savings_engine import (
+    calculate_savings_opportunity,
+    generate_top_issues,
+    generate_recommended_actions,
+)
+
+from upload_utils import normalize_columns, validate_mapping
 
 st.set_page_config(
     page_title="Subscription Analyzer",
@@ -78,7 +85,12 @@ def main() -> None:
         "and mock follow-up actions from banking-style transaction data."
     )
 
-    df = load_transactions("data/transactions.csv")
+    #df = load_transactions("data/transactions.csv")
+    if "uploaded_df" in st.session_state:
+        df = st.session_state["uploaded_df"]
+    else:
+        df = load_transactions("data/transactions.csv")
+
     initialize_action_store()
     initialize_memory_store()
 
@@ -149,8 +161,10 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(
+    tab_upload, tab0, tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs(
         [
+            "📂 Upload Data",
+            "💰 Savings Opportunity",
             "Recurring Subscriptions",
             "Duplicates",
             "Price Changes",
@@ -164,6 +178,76 @@ def main() -> None:
             "Planner Agent",
         ]
     )
+
+    with tab_upload:
+        st.markdown("## 📂 Upload Bank Statement")
+
+        uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+
+        if uploaded_file:
+            raw_df = pd.read_csv(uploaded_file)
+
+            st.markdown("### Preview Data")
+            st.dataframe(raw_df.head())
+
+            st.markdown("### Map Columns")
+
+            columns = raw_df.columns.tolist()
+
+            date_col = st.selectbox("Date column", columns)
+            merchant_col = st.selectbox("Merchant column", columns)
+            amount_col = st.selectbox("Amount column", columns)
+
+            mapping = {
+                date_col: "date",
+                merchant_col: "merchant",
+                amount_col: "amount",
+            }
+
+            if st.button("Process Data"):
+                if validate_mapping(mapping):
+                    processed_df = normalize_columns(raw_df, mapping)
+
+                    st.session_state["uploaded_df"] = processed_df
+                    st.success("Data processed successfully!")
+
+                else:
+                    st.error("Please map all required fields.")
+
+        if "uploaded_df" in st.session_state:
+            st.markdown("### Processed Data Preview")
+            st.dataframe(st.session_state["uploaded_df"].head())
+
+    with tab0:
+        st.markdown("## 💰 Subscription Savings Opportunity")
+
+        savings = calculate_savings_opportunity(customer_result)
+        issues = generate_top_issues(customer_result)
+        actions = generate_recommended_actions(customer_result)
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Monthly Spend", f"${savings['monthly_spend']:.2f}")
+        col2.metric("Potential Monthly Waste", f"${savings['estimated_waste']:.2f}")
+        col3.metric("Annual Savings Opportunity", f"${savings['annual_savings']:.2f}")
+
+        st.markdown("---")
+
+        st.markdown("### ⚠️ Key Issues Identified")
+        for issue in issues:
+            st.warning(issue)
+
+        st.markdown("### 🚀 Recommended Actions")
+        for action in actions:
+            st.success(action)
+
+        st.markdown("---")
+
+        st.markdown("### 💡 What This Means")
+        st.info(
+            "This customer has opportunities to reduce recurring spend by reviewing duplicate, "
+            "overlapping, or increased-cost subscriptions. Immediate action can unlock measurable savings."
+        )
 
     with tab1:
         st.markdown("### Recurring Subscriptions")
