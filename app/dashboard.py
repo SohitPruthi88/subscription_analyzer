@@ -33,6 +33,15 @@ from analyzer import (
 from assistant import answer_user_question
 from data_loader import load_transactions
 from llm_client import answer_with_llm, generate_llm_recommendation
+from memory import (
+    add_agent_trace,
+    add_chat_message,
+    clear_agent_trace,
+    clear_chat_history,
+    get_agent_trace,
+    get_chat_history,
+    initialize_memory_store,
+)
 
 
 st.set_page_config(
@@ -69,6 +78,7 @@ def main() -> None:
 
     df = load_transactions("data/transactions.csv")
     initialize_action_store()
+    initialize_memory_store()
 
     st.sidebar.header("Controls")
     customer_ids = sorted(df["customer_id"].unique().tolist())
@@ -84,6 +94,17 @@ def main() -> None:
         "Use Azure OpenAI for Recommendations and Ask AI",
         value=False,
     )
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Session Tools")
+
+    if st.sidebar.button("Clear chat history for this customer"):
+        clear_chat_history(selected_customer)
+        st.sidebar.success("Chat history cleared.")
+
+    if st.sidebar.button("Clear trace for this customer"):
+        clear_agent_trace(selected_customer)
+        st.sidebar.success("Agent trace cleared.")
 
     customer_result = analyze_customer(df, selected_customer)
     all_monthly_spend = estimate_monthly_subscription_spend(df)
@@ -126,7 +147,7 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
@@ -136,6 +157,7 @@ def main() -> None:
             "Ask AI",
             "Action Center",
             "Agent Decision",
+            "Memory & Trace",
         ]
     )
 
@@ -173,14 +195,32 @@ def main() -> None:
         if use_llm:
             try:
                 llm_text = generate_llm_recommendation(customer_result, selected_customer)
+                add_agent_trace(
+                    selected_customer,
+                    "recommendation",
+                    "Generated recommendation using Azure OpenAI.",
+                    {"mode": "llm"},
+                )
                 st.success(llm_text)
             except Exception as exc:
                 st.error(f"Azure OpenAI recommendation failed: {exc}")
                 fallback_text = generate_insights(customer_result, selected_customer)
+                add_agent_trace(
+                    selected_customer,
+                    "recommendation_fallback",
+                    "Recommendation fallback used after Azure OpenAI failure.",
+                    {"mode": "rule_based", "error": str(exc)},
+                )
                 st.info("Showing rule-based fallback recommendation.")
                 st.success(fallback_text)
         else:
             insights = generate_insights(customer_result, selected_customer)
+            add_agent_trace(
+                selected_customer,
+                "recommendation_rule_based",
+                "Generated recommendation using rule-based logic.",
+                {"mode": "rule_based"},
+            )
             st.success(insights)
 
     with tab6:
@@ -206,12 +246,22 @@ def main() -> None:
 
         if st.button("Get Answer"):
             if user_question.strip():
+                add_chat_message(selected_customer, "user", user_question)
+
                 if use_llm:
                     try:
-                        answer = answer_with_llm(
+                        answer = answer_agent_question(
                             user_question,
                             customer_result,
                             selected_customer,
+                            use_llm=True,
+                        )
+                        add_chat_message(selected_customer, "assistant", answer)
+                        add_agent_trace(
+                            selected_customer,
+                            "ask_ai_llm",
+                            f"Answered user question with Azure OpenAI: {user_question}",
+                            {"mode": "llm"},
                         )
                         st.info(answer)
                     except Exception as exc:
@@ -221,17 +271,45 @@ def main() -> None:
                             customer_result,
                             selected_customer,
                         )
+                        add_chat_message(selected_customer, "assistant", fallback_answer)
+                        add_agent_trace(
+                            selected_customer,
+                            "ask_ai_fallback",
+                            f"Fallback answer used for question: {user_question}",
+                            {"mode": "rule_based", "error": str(exc)},
+                        )
                         st.info("Showing rule-based fallback answer.")
                         st.info(fallback_answer)
                 else:
-                    answer = answer_user_question(
+                    answer = answer_agent_question(
                         user_question,
                         customer_result,
                         selected_customer,
+                        use_llm=False,
+                    )
+                    add_chat_message(selected_customer, "assistant", answer)
+                    add_agent_trace(
+                        selected_customer,
+                        "ask_ai_rule_based",
+                        f"Answered user question with rule-based logic: {user_question}",
+                        {"mode": "rule_based"},
                     )
                     st.info(answer)
             else:
                 st.warning("Please enter a question.")
+
+        st.markdown("---")
+        st.markdown("### Conversation History")
+
+        chat_history = get_chat_history(selected_customer)
+        if not chat_history:
+            st.info("No conversation history yet for this customer.")
+        else:
+            for msg in chat_history:
+                if msg["role"] == "user":
+                    st.markdown(f"**You:** {msg['content']}")
+                else:
+                    st.markdown(f"**Assistant:** {msg['content']}")
 
     with tab7:
         st.markdown("### Action Center")
@@ -261,6 +339,12 @@ def main() -> None:
                 if st.button("Suggest Cancellation Action", key="suggest_cancel"):
                     action = suggest_cancellation(selected_customer, cancel_merchant)
                     add_action(action)
+                    add_agent_trace(
+                        selected_customer,
+                        "manual_action_suggested",
+                        f"Manually suggested cancellation action for {cancel_merchant}.",
+                        {"action_type": "cancellation_request"},
+                    )
                     st.success(action["message"])
             else:
                 st.info("No recurring subscriptions available.")
@@ -275,6 +359,12 @@ def main() -> None:
                 if st.button("Suggest Downgrade Action", key="suggest_downgrade"):
                     action = suggest_downgrade(selected_customer, downgrade_merchant)
                     add_action(action)
+                    add_agent_trace(
+                        selected_customer,
+                        "manual_action_suggested",
+                        f"Manually suggested downgrade review for {downgrade_merchant}.",
+                        {"action_type": "downgrade_review"},
+                    )
                     st.success(action["message"])
             else:
                 st.info("No subscriptions available.")
@@ -301,6 +391,12 @@ def main() -> None:
                         str(selected_row["year_month"]),
                     )
                     add_action(action)
+                    add_agent_trace(
+                        selected_customer,
+                        "manual_action_suggested",
+                        f"Manually suggested duplicate dispute for {selected_row['normalized_merchant']}.",
+                        {"action_type": "duplicate_dispute"},
+                    )
                     st.success(action["message"])
             else:
                 st.info("No duplicate issues available.")
@@ -332,6 +428,12 @@ def main() -> None:
                         ):
                             updated = approve_action(action)
                             update_action(action["action_id"], updated)
+                            add_agent_trace(
+                                selected_customer,
+                                "action_approved",
+                                f"Approved action {action['action_id']} for {action['merchant']}.",
+                                {"action_type": action["action_type"]},
+                            )
                             st.rerun()
 
                     with button_col2:
@@ -341,6 +443,12 @@ def main() -> None:
                         ):
                             updated = reject_action(action)
                             update_action(action["action_id"], updated)
+                            add_agent_trace(
+                                selected_customer,
+                                "action_rejected",
+                                f"Rejected action {action['action_id']} for {action['merchant']}.",
+                                {"action_type": action["action_type"]},
+                            )
                             st.rerun()
 
                 elif action["status"] == "approved":
@@ -351,6 +459,12 @@ def main() -> None:
                         ):
                             updated = execute_action(action)
                             update_action(action["action_id"], updated)
+                            add_agent_trace(
+                                selected_customer,
+                                "action_executed",
+                                f"Executed action {action['action_id']} for {action['merchant']}.",
+                                {"action_type": action["action_type"]},
+                            )
                             st.rerun()
 
                 st.markdown("---")
@@ -392,6 +506,12 @@ def main() -> None:
         follow_up_question = get_follow_up_question(agent_decision)
         if follow_up_question:
             st.warning(follow_up_question)
+            add_agent_trace(
+                selected_customer,
+                "follow_up_question",
+                f"Suggested follow-up question: {follow_up_question}",
+                {"recommended_action": agent_decision["recommended_action"]},
+            )
         else:
             st.info("No follow-up question required right now.")
 
@@ -405,9 +525,43 @@ def main() -> None:
             )
             if action:
                 add_action(action)
+                add_agent_trace(
+                    selected_customer,
+                    "controller_action_created",
+                    f"Controller created action for {action['merchant']}.",
+                    {"action_type": action["action_type"]},
+                )
                 st.success("Controller-created suggested action added to Action Center.")
             else:
+                add_agent_trace(
+                    selected_customer,
+                    "controller_no_action",
+                    "Controller decision did not create an action.",
+                    {"recommended_action": agent_decision["recommended_action"]},
+                )
                 st.info("This decision does not create an action automatically.")
+
+    with tab9:
+        st.markdown("### Memory & Trace")
+
+        history_col, trace_col = st.columns(2)
+
+        with history_col:
+            st.markdown("#### Chat Memory")
+            chat_history = get_chat_history(selected_customer)
+            if not chat_history:
+                st.info("No chat history stored yet.")
+            else:
+                for msg in chat_history:
+                    st.markdown(f"**{msg['role'].title()}:** {msg['content']}")
+
+        with trace_col:
+            st.markdown("#### Agent Trace")
+            trace_df = get_agent_trace(selected_customer)
+            if trace_df.empty:
+                st.info("No trace events recorded yet.")
+            else:
+                st.dataframe(trace_df, use_container_width=True)
 
 
 if __name__ == "__main__":
