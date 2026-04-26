@@ -11,6 +11,21 @@ from analyzer import (
     detect_price_changes,
     estimate_monthly_subscription_spend,
 )
+from actions import (
+    suggest_cancellation,
+    suggest_duplicate_dispute,
+    suggest_downgrade,
+    approve_action,
+    reject_action,
+    execute_action,
+)
+from action_store import (
+    initialize_action_store,
+    add_action,
+    get_action_log,
+    get_actions_for_customer,
+    update_action,
+)
 
 
 st.set_page_config(
@@ -36,6 +51,7 @@ def main():
     st.caption("Analyze recurring payments, duplicate subscriptions, and monthly spend from mock banking transactions.")
 
     df = load_transactions("data/transactions.csv")
+    initialize_action_store()
 
     st.sidebar.header("Controls")
     customer_ids = sorted(df["customer_id"].unique().tolist())
@@ -89,7 +105,7 @@ def main():
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
@@ -97,6 +113,7 @@ def main():
             "Overlapping Plans",
             "Recommendations",
             "Ask AI",
+            "Action Center",
         ]
     )
 
@@ -147,6 +164,81 @@ def main():
             "What changed this month?",
             "Which one should I cancel first?",
         ]
+
+    with tab7:
+        st.markdown("### Action Center")
+
+            recurring_options = []
+            if not customer_result["recurring"].empty:
+                recurring_options = customer_result["recurring"]["normalized_merchant"].astype(str).unique().tolist()
+
+            duplicate_options = []
+            if not customer_result["duplicates"].empty:
+                duplicate_options = customer_result["duplicates"]["normalized_merchant"].astype(str).unique().tolist()
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### Draft Cancellation Request")
+                if recurring_options:
+                    cancel_merchant = st.selectbox(
+                        "Choose subscription to cancel",
+                        recurring_options,
+                        key="cancel_merchant"
+                    )
+                    if st.button("Draft Cancellation", key="draft_cancel"):
+                        action = create_cancellation_request(selected_customer, cancel_merchant)
+                        add_action(action)
+                        st.success(action["message"])
+                else:
+                    st.info("No recurring subscriptions available for cancellation review.")
+
+                st.markdown("#### Recommend Downgrade")
+                if recurring_options:
+                    downgrade_merchant = st.selectbox(
+                        "Choose subscription to review for downgrade",
+                        recurring_options,
+                        key="downgrade_merchant"
+                    )
+                    if st.button("Recommend Downgrade", key="recommend_downgrade"):
+                        action = create_downgrade_recommendation(selected_customer, downgrade_merchant)
+                        add_action(action)
+                        st.success(action["message"])
+                else:
+                    st.info("No subscriptions available for downgrade review.")
+
+            with col2:
+                st.markdown("#### Flag Duplicate Charge")
+                if not customer_result["duplicates"].empty:
+                    duplicate_row_labels = [
+                        f"{row['normalized_merchant']} ({row['year_month']})"
+                        for _, row in customer_result["duplicates"].iterrows()
+                    ]
+                    selected_duplicate = st.selectbox(
+                        "Choose duplicate charge",
+                        duplicate_row_labels,
+                        key="duplicate_choice"
+                    )
+                    if st.button("Flag Duplicate", key="flag_duplicate"):
+                        selected_row = customer_result["duplicates"].iloc[
+                            duplicate_row_labels.index(selected_duplicate)]
+                        action = create_duplicate_dispute(
+                            selected_customer,
+                            selected_row["normalized_merchant"],
+                            selected_row["year_month"],
+                        )
+                        add_action(action)
+                        st.success(action["message"])
+                else:
+                    st.info("No duplicate charges available for dispute review.")
+
+            st.markdown("---")
+            st.markdown("#### Action History")
+            action_log_df = get_action_log()
+            if action_log_df.empty:
+                st.info("No actions recorded yet.")
+            else:
+                st.dataframe(action_log_df, use_container_width=True)
 
         selected_example = st.selectbox("Try an example question", [""] + example_questions)
 

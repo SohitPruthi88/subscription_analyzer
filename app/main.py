@@ -53,6 +53,5 @@ def main():
         print("\nEstimated monthly spend:")
         print_dataframe(result["monthly_spend"])
 
-
 if __name__ == "__main__":
     main()
