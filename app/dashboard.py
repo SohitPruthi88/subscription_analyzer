@@ -16,6 +16,13 @@ from actions import (
     suggest_downgrade,
     suggest_duplicate_dispute,
 )
+from agent_controller import (
+    answer_agent_question,
+    build_suggested_action_from_decision,
+    decide_next_step,
+    generate_agent_summary,
+    get_follow_up_question,
+)
 from ai_insights import generate_insights
 from analyzer import (
     analyze_customer,
@@ -26,7 +33,6 @@ from analyzer import (
 from assistant import answer_user_question
 from data_loader import load_transactions
 from llm_client import answer_with_llm, generate_llm_recommendation
-from orchestrator import generate_agent_decision
 
 
 st.set_page_config(
@@ -81,7 +87,7 @@ def main() -> None:
 
     customer_result = analyze_customer(df, selected_customer)
     all_monthly_spend = estimate_monthly_subscription_spend(df)
-    agent_decision = generate_agent_decision(customer_result, selected_customer)
+    agent_decision = decide_next_step(customer_result, selected_customer)
 
     st.subheader("Overview")
 
@@ -358,6 +364,8 @@ def main() -> None:
 
     with tab8:
         st.markdown("### Agent Decision")
+        st.caption("This is the central controller view for the next best action.")
+
         st.markdown(f"**Priority:** {agent_decision['priority'].upper()}")
         st.markdown(f"**Decision Type:** {agent_decision['decision_type']}")
         st.markdown(f"**Title:** {agent_decision['title']}")
@@ -368,38 +376,38 @@ def main() -> None:
                 f"**Recommended Next Step:** `{agent_decision['recommended_action']}`"
             )
 
-        auto_col1, auto_col2 = st.columns(2)
+        st.markdown("---")
+        st.markdown("### Controller-Generated Summary")
 
-        with auto_col1:
-            if agent_decision["recommended_action"] == "duplicate_dispute":
-                if st.button("Auto-suggest duplicate dispute"):
-                    action = suggest_duplicate_dispute(
-                        selected_customer,
-                        agent_decision["merchant"],
-                        agent_decision["year_month"],
-                    )
-                    add_action(action)
-                    st.success("Duplicate dispute action suggested and added to Action Center.")
+        controller_summary = generate_agent_summary(
+            customer_result,
+            selected_customer,
+            use_llm=use_llm,
+        )
+        st.success(controller_summary)
 
-            elif agent_decision["recommended_action"] == "downgrade_review":
-                recurring_df = customer_result["recurring"]
-                if not recurring_df.empty:
-                    merchant = str(recurring_df.iloc[0]["normalized_merchant"])
-                    if st.button("Auto-suggest downgrade review"):
-                        action = suggest_downgrade(selected_customer, merchant)
-                        add_action(action)
-                        st.success("Downgrade review action suggested and added to Action Center.")
+        st.markdown("---")
+        st.markdown("### Controller Follow-Up")
 
-        with auto_col2:
-            if agent_decision["recommended_action"] == "ask_usage_question":
-                st.warning(
-                    "Suggested follow-up question: Are you still actively using this subscription every month?"
-                )
+        follow_up_question = get_follow_up_question(agent_decision)
+        if follow_up_question:
+            st.warning(follow_up_question)
+        else:
+            st.info("No follow-up question required right now.")
 
-            elif agent_decision["recommended_action"] == "ask_spend_review_question":
-                st.warning(
-                    "Suggested follow-up question: Which of these subscriptions do you use at least once a week?"
-                )
+        st.markdown("---")
+        st.markdown("### Controller Suggested Action")
+
+        if st.button("Create Suggested Action From Decision"):
+            action = build_suggested_action_from_decision(
+                agent_decision,
+                selected_customer,
+            )
+            if action:
+                add_action(action)
+                st.success("Controller-created suggested action added to Action Center.")
+            else:
+                st.info("This decision does not create an action automatically.")
 
 
 if __name__ == "__main__":
