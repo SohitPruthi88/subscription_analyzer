@@ -25,9 +25,8 @@ from analyzer import (
 )
 from assistant import answer_user_question
 from data_loader import load_transactions
-from orchestrator import generate_agent_decision
-
 from llm_client import answer_with_llm, generate_llm_recommendation
+from orchestrator import generate_agent_decision
 
 
 st.set_page_config(
@@ -75,6 +74,11 @@ def main() -> None:
         value=True,
     )
 
+    use_llm = st.sidebar.checkbox(
+        "Use Azure OpenAI for Recommendations and Ask AI",
+        value=False,
+    )
+
     customer_result = analyze_customer(df, selected_customer)
     all_monthly_spend = estimate_monthly_subscription_spend(df)
     agent_decision = generate_agent_decision(customer_result, selected_customer)
@@ -83,7 +87,6 @@ def main() -> None:
 
     recurring_count = len(customer_result["recurring"])
     duplicate_count = len(customer_result["duplicates"])
-    price_change_count = len(customer_result["price_changes"])
     monthly_spend_value = get_monthly_spend_value(customer_result)
 
     metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
@@ -160,8 +163,19 @@ def main() -> None:
 
     with tab5:
         st.markdown("### Recommendation Preview")
-        insights = generate_insights(customer_result, selected_customer)
-        st.success(insights)
+
+        if use_llm:
+            try:
+                llm_text = generate_llm_recommendation(customer_result, selected_customer)
+                st.success(llm_text)
+            except Exception as exc:
+                st.error(f"Azure OpenAI recommendation failed: {exc}")
+                fallback_text = generate_insights(customer_result, selected_customer)
+                st.info("Showing rule-based fallback recommendation.")
+                st.success(fallback_text)
+        else:
+            insights = generate_insights(customer_result, selected_customer)
+            st.success(insights)
 
     with tab6:
         st.markdown("### Ask AI About This Customer")
@@ -186,12 +200,30 @@ def main() -> None:
 
         if st.button("Get Answer"):
             if user_question.strip():
-                answer = answer_user_question(
-                    user_question,
-                    customer_result,
-                    selected_customer,
-                )
-                st.info(answer)
+                if use_llm:
+                    try:
+                        answer = answer_with_llm(
+                            user_question,
+                            customer_result,
+                            selected_customer,
+                        )
+                        st.info(answer)
+                    except Exception as exc:
+                        st.error(f"Azure OpenAI answer failed: {exc}")
+                        fallback_answer = answer_user_question(
+                            user_question,
+                            customer_result,
+                            selected_customer,
+                        )
+                        st.info("Showing rule-based fallback answer.")
+                        st.info(fallback_answer)
+                else:
+                    answer = answer_user_question(
+                        user_question,
+                        customer_result,
+                        selected_customer,
+                    )
+                    st.info(answer)
             else:
                 st.warning("Please enter a question.")
 
