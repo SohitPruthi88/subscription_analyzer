@@ -25,6 +25,7 @@ from analyzer import (
 )
 from assistant import answer_user_question
 from data_loader import load_transactions
+from orchestrator import generate_agent_decision
 
 
 st.set_page_config(
@@ -74,6 +75,7 @@ def main() -> None:
 
     customer_result = analyze_customer(df, selected_customer)
     all_monthly_spend = estimate_monthly_subscription_spend(df)
+    agent_decision = generate_agent_decision(customer_result, selected_customer)
 
     st.subheader("Overview")
 
@@ -113,7 +115,7 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
@@ -122,6 +124,7 @@ def main() -> None:
             "Recommendations",
             "Ask AI",
             "Action Center",
+            "Agent Decision",
         ]
     )
 
@@ -318,6 +321,51 @@ def main() -> None:
             st.info("No actions recorded yet.")
         else:
             st.dataframe(action_log_df, use_container_width=True)
+
+    with tab8:
+        st.markdown("### Agent Decision")
+        st.markdown(f"**Priority:** {agent_decision['priority'].upper()}")
+        st.markdown(f"**Decision Type:** {agent_decision['decision_type']}")
+        st.markdown(f"**Title:** {agent_decision['title']}")
+        st.info(agent_decision["message"])
+
+        if agent_decision["recommended_action"] != "none":
+            st.markdown(
+                f"**Recommended Next Step:** `{agent_decision['recommended_action']}`"
+            )
+
+        auto_col1, auto_col2 = st.columns(2)
+
+        with auto_col1:
+            if agent_decision["recommended_action"] == "duplicate_dispute":
+                if st.button("Auto-suggest duplicate dispute"):
+                    action = suggest_duplicate_dispute(
+                        selected_customer,
+                        agent_decision["merchant"],
+                        agent_decision["year_month"],
+                    )
+                    add_action(action)
+                    st.success("Duplicate dispute action suggested and added to Action Center.")
+
+            elif agent_decision["recommended_action"] == "downgrade_review":
+                recurring_df = customer_result["recurring"]
+                if not recurring_df.empty:
+                    merchant = str(recurring_df.iloc[0]["normalized_merchant"])
+                    if st.button("Auto-suggest downgrade review"):
+                        action = suggest_downgrade(selected_customer, merchant)
+                        add_action(action)
+                        st.success("Downgrade review action suggested and added to Action Center.")
+
+        with auto_col2:
+            if agent_decision["recommended_action"] == "ask_usage_question":
+                st.warning(
+                    "Suggested follow-up question: Are you still actively using this subscription every month?"
+                )
+
+            elif agent_decision["recommended_action"] == "ask_spend_review_question":
+                st.warning(
+                    "Suggested follow-up question: Which of these subscriptions do you use at least once a week?"
+                )
 
 
 if __name__ == "__main__":
