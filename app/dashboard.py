@@ -27,6 +27,8 @@ from assistant import answer_user_question
 from data_loader import load_transactions
 from orchestrator import generate_agent_decision
 
+from llm_client import answer_with_llm, generate_llm_recommendation
+
 
 st.set_page_config(
     page_title="Subscription Analyzer",
