@@ -42,6 +42,7 @@ from memory import (
     get_chat_history,
     initialize_memory_store,
 )
+from tool_agent import run_tool_agent
 
 
 st.set_page_config(
@@ -147,7 +148,7 @@ def main() -> None:
 
     st.subheader(f"Customer {selected_customer} Analysis")
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(
         [
             "Recurring Subscriptions",
             "Duplicates",
@@ -158,6 +159,7 @@ def main() -> None:
             "Action Center",
             "Agent Decision",
             "Memory & Trace",
+            "Tool Agent",
         ]
     )
 
@@ -562,6 +564,81 @@ def main() -> None:
                 st.info("No trace events recorded yet.")
             else:
                 st.dataframe(trace_df, use_container_width=True)
+
+    with tab10:
+        st.markdown("### Tool Agent")
+        st.caption(
+            "The model selects one tool, the app executes it, and the agent summarizes the result."
+        )
+
+        example_tool_questions = [
+            "Do I have duplicate subscriptions?",
+            "What am I spending every month?",
+            "What changed this month?",
+            "Create a dispute for the duplicate charge.",
+            "Create a downgrade recommendation for me.",
+            "What subscriptions do I have?",
+        ]
+
+        selected_tool_example = st.selectbox(
+            "Try a tool-agent example",
+            [""] + example_tool_questions,
+            key="tool_agent_example",
+        )
+
+        tool_agent_question = st.text_input(
+            "Ask the tool agent",
+            value=selected_tool_example,
+            key="tool_agent_question",
+        )
+
+        if st.button("Run Tool Agent"):
+            if tool_agent_question.strip():
+                result = run_tool_agent(
+                    tool_agent_question,
+                    customer_result,
+                    selected_customer,
+                    use_llm=use_llm,
+                )
+
+                add_agent_trace(
+                    selected_customer,
+                    "tool_agent_run",
+                    f"Tool agent selected {result['tool_choice']['tool_name']}.",
+                    {
+                        "selection_mode": result["selection_mode"],
+                        "answer_mode": result["answer_mode"],
+                        "reason": result["tool_choice"]["reason"],
+                    },
+                )
+
+                st.markdown("#### Selected Tool")
+                st.code(result["tool_choice"]["tool_name"])
+
+                st.markdown("#### Why This Tool")
+                st.info(result["tool_choice"]["reason"])
+
+                st.markdown("#### Agent Answer")
+                st.success(result["final_answer"])
+
+                st.markdown("#### Raw Tool Result")
+                st.json(result["tool_result"])
+
+                if (
+                    result["tool_result"]["result_type"] == "action"
+                    and result["tool_result"].get("created_action") is not None
+                ):
+                    if st.button("Add Created Action to Action Center", key="add_tool_action"):
+                        add_action(result["tool_result"]["created_action"])
+                        add_agent_trace(
+                            selected_customer,
+                            "tool_agent_action_added",
+                            f"Added tool-created action for {result['tool_result']['created_action']['merchant']}.",
+                            {"action_type": result['tool_result']['created_action']['action_type']},
+                        )
+                        st.success("Tool-created action added to Action Center.")
+            else:
+                st.warning("Please enter a question for the tool agent.")
 
 
 if __name__ == "__main__":
